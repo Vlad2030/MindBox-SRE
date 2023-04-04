@@ -1,0 +1,107 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: test-app
+spec:
+  replicas: 3
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  selector:
+    matchLabels:
+      run: test-app
+  template:
+    metadata:
+      labels:
+        run: test-app
+    spec:
+      affinity: 
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: run
+                  operator: In
+                  values:
+                  - test-app
+              topologyKey: topology.kubernetes.io/zone
+
+      containers:
+      - name: test-app
+        image: registry/app:v1
+        ports:
+        - containerPort: 80
+
+        startupProbe:
+          httpGet:
+            path: /
+            port: 80
+          failureThreshold: 3
+          periodSeconds: 5 
+
+        readinessProbe: 
+          failureThreshold: 2 
+          httpGet:
+            path: /
+            port: 80
+          periodSeconds: 5  
+          successThreshold: 1
+          timeoutSeconds: 1
+          initialDelaySeconds: 5 
+
+        livenessProbe: 
+          failureThreshold: 4 
+          httpGet:
+            path: /
+            port: 80
+          periodSeconds: 5 
+          successThreshold: 1
+          timeoutSeconds: 1
+
+        resources:
+          requests:
+            cpu: "100m" 
+            memory: "128Mi" 
+          limits:
+            cpu: "1000m" 
+            memory: "256Mi" 
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: test-app
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: test-app
+  minReplicas: 3 
+  maxReplicas: 4 
+  metrics:
+  - type: Resource
+    resource:
+        name: cpu
+        targetAverageValue: "200m" 
+  - type: Resource
+      resource:
+        name: memory
+        targetAverageValue: "200Mi"
+ 
+apiVersion: v1
+kind: Service
+metadata:
+  name: LoadBalancer-test-app
+spec:
+  selector:
+    matchLabels:
+      run: test-app
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+  type: LoadBalancer
